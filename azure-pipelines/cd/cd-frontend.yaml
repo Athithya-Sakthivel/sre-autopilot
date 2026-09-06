@@ -3,7 +3,12 @@
 #
 # Trigger: automatic on successful ci-frontend run on main.
 # Uses pipeline resource ciFrontend.sourceCommit for image tag.
-# Auto-detects first run (stable) vs subsequent runs (canary).
+#
+# Deploy logic:
+#   - No Rollout        -> stable deployment only
+#   - Healthy Rollout   -> canary deployment
+#   - Degraded Rollout  -> stable deployment only to recover
+#
 # No environment approval.
 # ---------------------------------------------------------------------------
 
@@ -144,23 +149,27 @@ stages:
                 IMAGE="$(containerRegistry).azurecr.io/frontend:${COMMIT}"
 
                 if kubectl get rollout frontend -n "$NAMESPACE" >/dev/null 2>&1; then
-                  echo "Rollout exists: running canary deployment"
-                  bash azure-pipelines/scripts/frontend-deploy.sh \
-                    --canary \
-                    --image "$IMAGE" \
-                    --qps 2 \
-                    --p95-threshold 20000 \
-                    --error-threshold 0.05 \
-                    --duration 15s \
-                    --observation-duration 15s
+                  PHASE="$(kubectl get rollout frontend -n "$NAMESPACE" -o json | jq -r '.status.phase // "Unknown"')"
+
+                  if [[ "$PHASE" == "Healthy" ]]; then
+                    echo "Healthy rollout exists: running canary deployment"
+                    bash azure-pipelines/scripts/frontend-deploy.sh \
+                      --canary \
+                      --image "$IMAGE" \
+                      --qps 2 \
+                      --p95-threshold 20000 \
+                      --error-threshold 0.05 \
+                      --duration 15s \
+                      --observation-duration 15s
+                  else
+                    echo "Rollout exists but is $PHASE: running stable deployment to recover"
+                    bash azure-pipelines/scripts/frontend-deploy.sh \
+                      --stable \
+                      --stable-tag "$COMMIT"
+                  fi
                 else
-                  echo "Rollout missing: running stable deployment first"
+                  echo "No rollout found: running stable deployment"
                   bash azure-pipelines/scripts/frontend-deploy.sh \
                     --stable \
-                    --stable-tag "$COMMIT" \
-                    --qps 2 \
-                    --p95-threshold 20000 \
-                    --error-threshold 0.05 \
-                    --duration 15s \
-                    --observation-duration 15s
+                    --stable-tag "$COMMIT"
                 fi

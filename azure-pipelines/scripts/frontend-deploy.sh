@@ -2,7 +2,7 @@
 # ==============================================================================
 # frontend-deploy.sh – Frontend lifecycle manager (stable and canary)
 #
-# Manages a frontend Rollout with Argo Rollouts canary strategy.
+# Manages the frontend Rollout with Argo Rollouts canary strategy.
 # Supports stable deploys (setWeight:100) and canary deploys with automatic
 # validation (Playwright + optional k6) and rollback on failure.
 #
@@ -14,15 +14,15 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-GEN_DIR="$SCRIPT_DIR/../infra/k8s/generated/frontend"
+GEN_DIR="${RUNNER_TEMP:-/tmp}/k8s-generated/frontend"
 
 # --- Defaults (override via flags or environment) ---------------------------
 NAMESPACE="${NAMESPACE:-task-api}"
 REPLICAS="${REPLICAS:-2}"
 PORT="${PORT:-8080}"
-IMAGE_REPO="${IMAGE_REPO:-ghcr.io/athithya-sakthivel/task-api-frontend}"
-STABLE_TAG="${STABLE_TAG:-v1}"
-CANARY_TAG="${CANARY_TAG:-v2}"
+IMAGE_REPO="${IMAGE_REPO:-}"                    # required via env or --image-repo
+STABLE_TAG="${STABLE_TAG:-}"                    # required for stable deploy
+CANARY_TAG="${CANARY_TAG:-}"                    # optional fallback for canary
 PLAYWRIGHT_DIR="${PLAYWRIGHT_DIR:-$SCRIPT_DIR/../tests/playwright}"
 K6_SCRIPT="${K6_SCRIPT:-$SCRIPT_DIR/../tests/k6/frontend-load.ts}"
 K6_BIN="${K6_BIN:-k6}"
@@ -63,16 +63,22 @@ success(){ printf "${C_GREEN}[%s] SUCCESS:${C_RESET} %s\n" "$(date -u +%H:%M:%SZ
 
 usage() { cat <<USAGE
 Usage:
-  $0 --stable --stable-tag v1
-  $0 --canary --image <image> [options]
+  $0 --stable --stable-tag <tag>
+  $0 --canary --image <full-image> [options]
+
+Required for stable:
+  IMAGE_REPO and STABLE_TAG (or --image-repo and --stable-tag)
+
+Required for canary:
+  --image <full-image> (e.g., registry/repo:tag)
 
 Options:
   --namespace <ns>                  Kubernetes namespace (default: $NAMESPACE)
   --replicas <n>                    Number of replicas (default: $REPLICAS)
   --port <port>                     Container and Service port (default: $PORT)
-  --image-repo <repo>               Image repository (default: $IMAGE_REPO)
-  --stable-tag <tag>                Stable image tag (default: $STABLE_TAG)
-  --canary-tag <tag>                Canary image tag (default: $CANARY_TAG)
+  --image-repo <repo>               Image repository (default: empty)
+  --stable-tag <tag>                Stable image tag
+  --canary-tag <tag>                Canary image tag (optional)
   --playwright-dir <path>           Playwright tests directory (default: $PLAYWRIGHT_DIR)
   --k6-script <path>                k6 script path (default: $K6_SCRIPT)
   --qps <n>                         Target QPS (default: $QPS)
@@ -118,7 +124,7 @@ detect_strategy() {
 validate_rollout_healthy() {
   local phase
   phase="$(jq -r '.status.phase // "Unknown"' <<<"$(rollout_json)")"
-  [[ "$phase" == "Healthy" ]] || fail "Rollout must be Healthy before canary; current phase: $phase. Use --stable first."
+  [[ "$phase" == "Healthy" ]] || fail "Rollout must be Healthy before canary; current phase: $phase. Run stable deployment first."
 }
 
 resolve_canary_port() {
@@ -290,7 +296,6 @@ data:
 EOF
 }
 
-
 ensure_services() {
   write_and_apply "services.yaml" <<EOF
 apiVersion: v1
@@ -320,7 +325,6 @@ EOF
 }
 
 ensure_httproute() {
-  # Only create if missing; Argo Rollouts will manage weights later.
   if ! kubectl get httproute frontend-route -n "$NAMESPACE" >/dev/null 2>&1; then
     write_and_apply "httproute.yaml" <<EOF
 apiVersion: gateway.networking.k8s.io/v1
@@ -347,7 +351,6 @@ spec:
 EOF
   fi
 }
-
 
 ensure_rollout() {
   if ! kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
@@ -468,7 +471,6 @@ run_playwright() {
   log "Running Playwright tests..."
   (
     cd "$PLAYWRIGHT_DIR"
-    # Ensure dependencies are installed; skip heavy browser download if already present.
     [[ -d node_modules ]] || npm ci --silent >/dev/null 2>&1
     if [[ "${PLAYWRIGHT_INSTALL:-1}" == "1" ]]; then
       npx playwright install --with-deps chromium >/dev/null 2>&1 || warn "Playwright browser install failed; continuing with existing."
@@ -516,23 +518,26 @@ start_port_forward() {
 
 # --- Main deployment flows ---------------------------------------------------
 deploy_stable() {
-  IMAGE="$IMAGE_REPO:${1:-$STABLE_TAG}"
+  local tag="${1:-$STABLE_TAG}"
+  [[ -n "$IMAGE_REPO" ]] || fail "IMAGE_REPO is required for stable deploy."
+  [[ -n "$tag" ]] || fail "STABLE_TAG or --stable-tag is required."
+  IMAGE="$IMAGE_REPO:$tag"
   log "Deploying stable frontend $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
   ensure_httproute
-  ensure_rollout        # does not wait; okay
+  ensure_rollout
   patch_replicas
   patch_steps '[{"setWeight":100}]'
   set_image "$IMAGE"
-  promote_to_full 2>/dev/null || true   # ignore if already full
+  promote_to_full 2>/dev/null || true
   wait_for_healthy
   success "Stable frontend deployed"
 }
 
 deploy_canary() {
-  IMAGE="${IMAGE:-$IMAGE_REPO:$CANARY_TAG}"
+  [[ -n "$IMAGE" ]] || fail "--image is required for canary deploy."
   log "Deploying canary frontend $IMAGE"
   ensure_namespace
   ensure_configmap
@@ -553,7 +558,7 @@ deploy_canary() {
   ]'
   set_image "$IMAGE"
   ROLL_OUT_UPDATED=true
-  wait_for_canary_pause       # wait at first pause (0%)
+  wait_for_canary_pause
   resolve_canary_port
   start_port_forward
   run_playwright
@@ -564,11 +569,11 @@ deploy_canary() {
     warn "Skip promote requested; leaving at current step"
     return 0
   fi
-  promote_once                # promote to 10%
-  wait_for_canary_pause       # wait at second pause (10%)
+  promote_once
+  wait_for_canary_pause
   log "Observing at 10% for $OBSERVATION_DURATION"
   sleep "$OBSERVATION_DURATION"
-  promote_once                # promote to 100%
+  promote_once
   wait_for_healthy
   ROLL_OUT_UPDATED=false
   success "Frontend canary completed"
@@ -602,7 +607,6 @@ parse_args() {
       *) fail "Unknown argument: $1" ;;
     esac
   done
-  # If canary mode and no image provided, default to repo:canary-tag
   if [[ "$MODE" == "canary" && -z "$IMAGE" && -n "$CANARY_TAG" ]]; then
     IMAGE="$IMAGE_REPO:$CANARY_TAG"
   fi
