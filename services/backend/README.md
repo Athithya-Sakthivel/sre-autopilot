@@ -194,5 +194,3 @@ az monitor log-analytics query --workspace "$CUSTOM_ID" \
 - **JSON parsing?** Use `jq` with both formats:
   `jq -r 'if type=="array" then .[0].RequestCount else .tables[0].rows[0][0] end // 0'`
 - **Workspace not linked?** Recreate Application Insights with `--workspace` explicitly.
-
----

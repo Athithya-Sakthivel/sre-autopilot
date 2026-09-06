@@ -12,7 +12,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.30.4-alpine-slim
 
 # Runtime defaults.
-# The value is intentionally empty so the envsubst template always
+# The value is intentionally empty so the envsubst template always.
 # resolves successfully when telemetry is disabled.
 ENV APPLICATIONINSIGHTS_CONNECTION_STRING=""
 ENV NGINX_ENVSUBST_FILTER="^APPLICATIONINSIGHTS_CONNECTION_STRING$"
