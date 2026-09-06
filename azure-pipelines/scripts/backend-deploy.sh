@@ -17,14 +17,12 @@ NAMESPACE="${NAMESPACE:-task-api}"
 REPLICAS="${REPLICAS:-2}"
 PORT="${PORT:-8080}"
 IMAGE_REPO="${IMAGE_REPO:-ghcr.io/athithya-sakthivel/task-api-backend}"
-
 STABLE_TAG="${STABLE_TAG:-v1}"
 CANARY_TAG="${CANARY_TAG:-v2}"
 IMAGE_TAG="${STABLE_TAG}"
 
 K6_SCRIPT="${K6_SCRIPT:-$SCRIPT_DIR/../tests/k6/backend-load.ts}"
 K6_BIN="${K6_BIN:-k6}"
-
 
 QPS="${QPS:-50}"
 P95_THRESHOLD="${P95_THRESHOLD:-200}"
@@ -51,7 +49,6 @@ ROLL_OUT_UPDATED=false
 ROLLING_BACK=false
 PORT_FORWARD_PID=""
 PORT_FORWARD_LOG=""
-
 
 C_RESET='\033[0m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'; C_YELLOW='\033[1;33m'; C_CYAN='\033[0;36m'
 log()    { printf "${C_CYAN}[%s]${C_RESET} %s\n" "$(date -u +%H:%M:%SZ)" "$*"; }
@@ -292,7 +289,7 @@ spec:
             - name: APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE
               value: "100"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.version=${IMAGE_TAG},service.instance.id=$(POD_NAME)"
+              value: "service.version=${STABLE_TAG},service.instance.id=$(POD_NAME)"
           resources:
             requests:
               cpu: 100m
@@ -364,22 +361,23 @@ patch_replicas() {
     --type merge -p "{\"spec\":{\"replicas\":$REPLICAS}}"
 }
 
-set_image() { kubectl argo rollouts set image "$ROLLOUT_NAME" "$CONTAINER=$1" -n "$NAMESPACE"; }
+set_image_and_version() {
+  local image="$1"
+  local rollout_data env_index patch
 
-update_otel_version() {
-  local env_index
-  # Find the index of the OTEL_RESOURCE_ATTRIBUTES env var in the first container
-  env_index="$(kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json | \
-    jq '.spec.template.spec.containers[0].env | to_entries[] | select(.value.name == "OTEL_RESOURCE_ATTRIBUTES") | .key')"
+  rollout_data="$(kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json)"
+  env_index="$(jq -r '(.spec.template.spec.containers[0].env // []) | to_entries[] | select(.value.name == "OTEL_RESOURCE_ATTRIBUTES") | .key' <<<"$rollout_data")"
 
   if [[ -z "$env_index" ]]; then
-    warn "OTEL_RESOURCE_ATTRIBUTES not found in rollout; skipping version update"
-    return 0
+    fail "OTEL_RESOURCE_ATTRIBUTES env not found in rollout; cannot set version"
   fi
 
-  kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" \
-    --type json \
-    -p "[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/env/${env_index}/value\",\"value\":\"service.version=${IMAGE_TAG},service.instance.id=\$(POD_NAME)\"}]"
+  patch='[
+    {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
+    {"op":"replace","path":"/spec/template/spec/containers/0/env/'"$env_index"'/value","value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"}
+  ]'
+
+  kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" --type json -p "$patch"
 }
 
 run_k6() {
@@ -421,8 +419,8 @@ start_port_forward() {
 
 deploy_stable() {
   IMAGE="$IMAGE_REPO:${1:-$STABLE_TAG}"
-  IMAGE_TAG="${IMAGE##*:}"          # extract tag from full image
-  log "Deploying stable $ROLLOUT_NAME $IMAGE"
+  IMAGE_TAG="${IMAGE##*:}"
+  log "Deploying stable backend $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
@@ -431,17 +429,16 @@ deploy_stable() {
   ensure_hpa
   patch_replicas
   patch_steps '[{"setWeight":100}]'
-  set_image "$IMAGE"
-  update_otel_version               # <-- add this
+  set_image_and_version "$IMAGE"
   promote_to_full 2>/dev/null || true
   wait_for_healthy
-  success "Stable $ROLLOUT_NAME deployed"
+  success "Stable backend deployed"
 }
 
 deploy_canary() {
   IMAGE="${IMAGE:-$IMAGE_REPO:$CANARY_TAG}"
   IMAGE_TAG="${IMAGE##*:}"
-  log "Deploying canary $ROLLOUT_NAME $IMAGE"
+  log "Deploying canary backend $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
@@ -460,13 +457,12 @@ deploy_canary() {
     {"pause":{}},
     {"setWeight":100}
   ]'
-  set_image "$IMAGE"
-  update_otel_version               # <-- add this
+  set_image_and_version "$IMAGE"
   ROLL_OUT_UPDATED=true
   wait_for_canary_pause
   resolve_canary_port
   start_port_forward
-  run_k6                            # or run_playwright + run_k6 for frontend
+  run_k6
   stop_port_forward
   success "Validations passed"
   if [[ "$SKIP_PROMOTE" == true ]]; then
@@ -480,7 +476,7 @@ deploy_canary() {
   promote_once
   wait_for_healthy
   ROLL_OUT_UPDATED=false
-  success "$ROLLOUT_NAME canary completed"
+  success "Backend canary completed"
 }
 
 parse_args() {
