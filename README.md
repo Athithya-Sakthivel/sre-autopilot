@@ -46,7 +46,7 @@ gh auth login
 ### PHASE 0.3 Create a private repo in your gh account
 
 ```sh
-export REPO_NAME="aks-canary-platform" # or any name
+export REPO_NAME="aks-canary-platform"
 git remote remove origin 2>/dev/null || true
 gh repo create "$REPO_NAME" --private >/dev/null 2>&1
 REMOTE_URL="https://github.com/$(gh api user | jq -r .login)/$REPO_NAME.git"

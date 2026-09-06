@@ -13,7 +13,7 @@ trigger: none
 resources:
   pipelines:
     - pipeline: ciFrontend
-      source: ci-frontend
+      source: aks-canary-platform-ci-frontend
       trigger:
         branches:
           include:
