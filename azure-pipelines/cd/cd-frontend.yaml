@@ -2,7 +2,7 @@
 # CD — Frontend
 #
 # Trigger: automatic on successful ci-frontend run on main.
-# Uses pipeline resource ciFrontend.sourceCommit for exact source checkout.
+# Uses pipeline resource ciFrontend.sourceCommit for image tag only.
 # Builds, scans, pushes to ACR, canary deploys via frontend-deploy.sh.
 # No CI artifact handoff; image tag = sourceCommit SHA.
 # No environment approval.
@@ -34,7 +34,7 @@ pool:
 stages:
   - stage: build
     displayName: "Build, scan and push frontend image"
-    condition: and(succeeded(), eq(variables['resources.pipeline.ciFrontend.sourceBranch'], 'refs/heads/main'))
+    condition: succeeded()
     jobs:
       - job: build_push
         displayName: "Build / Trivy scan / push"
@@ -43,21 +43,8 @@ stages:
             clean: true
             fetchDepth: 1
             fetchTags: false
-            persistCredentials: false
             submodules: false
             lfs: false
-
-          - bash: |
-              set -euo pipefail
-              commit="$(resources.pipeline.ciFrontend.sourceCommit)"
-              test -n "$commit"
-              git -c "http.extraheader=AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" \
-                fetch --no-tags --depth=1 origin "$commit"
-              git checkout --detach "$commit"
-              test "$(git rev-parse HEAD)" = "$commit"
-            displayName: "Checkout exact CI source commit"
-            env:
-              SYSTEM_ACCESSTOKEN: "$(System.AccessToken)"
 
           - template: /azure-pipelines/templates/docker-build-push.yaml
             parameters:
@@ -80,21 +67,8 @@ stages:
             clean: true
             fetchDepth: 1
             fetchTags: false
-            persistCredentials: false
             submodules: false
             lfs: false
-
-          - bash: |
-              set -euo pipefail
-              commit="$(resources.pipeline.ciFrontend.sourceCommit)"
-              test -n "$commit"
-              git -c "http.extraheader=AUTHORIZATION: bearer $SYSTEM_ACCESSTOKEN" \
-                fetch --no-tags --depth=1 origin "$commit"
-              git checkout --detach "$commit"
-              test "$(git rev-parse HEAD)" = "$commit"
-            displayName: "Checkout exact CI source commit"
-            env:
-              SYSTEM_ACCESSTOKEN: "$(System.AccessToken)"
 
           - bash: |
               set -euo pipefail
