@@ -1,4 +1,5 @@
 # Common configuration for SecretStore/ExternalSecret resources.
+# Kind configuration by default, aks overridable.
 # This chart configures ESO resources; it does not install the ESO controller/CRDs.
 
 namespace: external-secrets
@@ -18,8 +19,10 @@ store:
 
 # Azure Key Vault settings.
 keyVault:
-  url: "" # e.g. https://my-keyvault.vault.azure.net
-  tenantId: "" # Required for ServicePrincipal; optional for WorkloadIdentity.
+  url: ""
+  # Required for ServicePrincipal. For WorkloadIdentity, leave empty if the
+  # ServiceAccount has azure.workload.identity/tenant-id annotation.
+  tenantId: ""
 
 # Authentication:
 #   ServicePrincipal
