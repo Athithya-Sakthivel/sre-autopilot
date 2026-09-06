@@ -13,15 +13,6 @@ trigger: none
 resources:
   pipelines:
     - pipeline: ciBackend
-      source:
-      trigger:
-        branches:
-          include:
-            - main
-
-resources:
-  pipelines:
-    - pipeline: ciBackend
       source: aks-canary-platform-ci-backend
       trigger:
         branches:
