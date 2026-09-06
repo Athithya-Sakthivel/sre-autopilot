@@ -8,11 +8,9 @@
 # ---------------------------------------------------------------------------
 
 trigger:
-  batch: true
   branches:
     include:
       - main
-      - feat/*
   paths:
     include:
       - services/backend/**
@@ -20,16 +18,7 @@ trigger:
       - azure-pipelines/templates/**
       - azure-pipelines/scripts/**
 
-pr:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - services/backend/**
-      - azure-pipelines/ci/ci-backend.yaml
-      - azure-pipelines/templates/**
-      - azure-pipelines/scripts/**
+pr: none
 
 pool:
   vmImage: "ubuntu-24.04"

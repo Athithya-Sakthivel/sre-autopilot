@@ -9,11 +9,9 @@
 
 
 trigger:
-  batch: true
   branches:
     include:
       - main
-      - feat/*
   paths:
     include:
       - infra/terraform/main/**
@@ -21,16 +19,7 @@ trigger:
       - azure-pipelines/templates/**
       - azure-pipelines/scripts/**
 
-pr:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - infra/terraform/main/**
-      - azure-pipelines/ci/ci-terraform.yaml
-      - azure-pipelines/templates/**
-      - azure-pipelines/scripts/**
+pr: none
 
 variables:
   - group: terraform-vars

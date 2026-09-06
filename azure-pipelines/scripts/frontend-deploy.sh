@@ -539,9 +539,21 @@ start_port_forward() {
 }
 
 update_otel_version() {
-  kubectl set env "rollout/$ROLLOUT_NAME" -n "$NAMESPACE" \
-    "OTEL_RESOURCE_ATTRIBUTES=service.version=${IMAGE_TAG},service.instance.id=\$(POD_NAME)"
+  local env_index
+  # Find the index of the OTEL_RESOURCE_ATTRIBUTES env var in the first container
+  env_index="$(kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json | \
+    jq '.spec.template.spec.containers[0].env | to_entries[] | select(.value.name == "OTEL_RESOURCE_ATTRIBUTES") | .key')"
+
+  if [[ -z "$env_index" ]]; then
+    warn "OTEL_RESOURCE_ATTRIBUTES not found in rollout; skipping version update"
+    return 0
+  fi
+
+  kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" \
+    --type json \
+    -p "[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/env/${env_index}/value\",\"value\":\"service.version=${IMAGE_TAG},service.instance.id=\$(POD_NAME)\"}]"
 }
+
 deploy_stable() {
   IMAGE="$IMAGE_REPO:${1:-$STABLE_TAG}"
   IMAGE_TAG="${IMAGE##*:}"          # extract tag from full image
