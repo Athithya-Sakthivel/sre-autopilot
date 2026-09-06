@@ -2,27 +2,23 @@
 # ==============================================================================
 # frontend-deploy.sh – Frontend lifecycle manager (stable and canary)
 #
-# Manages the frontend Rollout with Argo Rollouts canary strategy.
+# Manages a frontend Rollout with Argo Rollouts canary strategy.
 # Supports stable deploys (setWeight:100) and canary deploys with automatic
-# validation (Playwright + optional k6) and rollback on failure.
-#
-# Works on any Kubernetes cluster with Argo Rollouts, Gateway API, and a
-# `frontend-config` ConfigMap containing nginx configuration.
+# validation (Playwright + optional k6) and rollback on failure. HPA is applied.
 # ==============================================================================
 
 set -Eeuo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-GEN_DIR="${RUNNER_TEMP:-/tmp}/k8s-generated/frontend"
+GEN_DIR="$SCRIPT_DIR/../infra/k8s/generated/frontend"
 
-# --- Defaults (override via flags or environment) ---------------------------
 NAMESPACE="${NAMESPACE:-task-api}"
 REPLICAS="${REPLICAS:-2}"
 PORT="${PORT:-8080}"
-IMAGE_REPO="${IMAGE_REPO:-}"                    # required via env or --image-repo
-STABLE_TAG="${STABLE_TAG:-}"                    # required for stable deploy
-CANARY_TAG="${CANARY_TAG:-}"                    # optional fallback for canary
+IMAGE_REPO="${IMAGE_REPO:-ghcr.io/athithya-sakthivel/task-api-frontend}"
+STABLE_TAG="${STABLE_TAG:-v1}"
+CANARY_TAG="${CANARY_TAG:-v2}"
 PLAYWRIGHT_DIR="${PLAYWRIGHT_DIR:-$SCRIPT_DIR/../tests/playwright}"
 K6_SCRIPT="${K6_SCRIPT:-$SCRIPT_DIR/../tests/k6/frontend-load.ts}"
 K6_BIN="${K6_BIN:-k6}"
@@ -34,7 +30,7 @@ DURATION="${DURATION:-2m}"
 GRACEFUL_STOP="${GRACEFUL_STOP:-10s}"
 PREALLOCATED_VUS="${PREALLOCATED_VUS:-25}"
 OBSERVATION_DURATION="${OBSERVATION_DURATION:-2m}"
-WAIT_TIMEOUT="${WAIT_TIMEOUT:-600}"    # seconds
+WAIT_TIMEOUT="${WAIT_TIMEOUT:-600}"
 LOCAL_PORT="${LOCAL_PORT:-18080}"
 
 MODE="stable"
@@ -54,7 +50,6 @@ ROLLING_BACK=false
 PORT_FORWARD_PID=""
 PORT_FORWARD_LOG=""
 
-# --- Logging ----------------------------------------------------------------
 C_RESET='\033[0m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'; C_YELLOW='\033[1;33m'; C_CYAN='\033[0;36m'
 log()    { printf "${C_CYAN}[%s]${C_RESET} %s\n" "$(date -u +%H:%M:%SZ)" "$*"; }
 warn()   { printf "${C_YELLOW}[%s] WARN:${C_RESET} %s\n" "$(date -u +%H:%M:%SZ)" "$*" >&2; }
@@ -63,22 +58,16 @@ success(){ printf "${C_GREEN}[%s] SUCCESS:${C_RESET} %s\n" "$(date -u +%H:%M:%SZ
 
 usage() { cat <<USAGE
 Usage:
-  $0 --stable --stable-tag <tag>
-  $0 --canary --image <full-image> [options]
-
-Required for stable:
-  IMAGE_REPO and STABLE_TAG (or --image-repo and --stable-tag)
-
-Required for canary:
-  --image <full-image> (e.g., registry/repo:tag)
+  $0 --stable --stable-tag v1
+  $0 --canary --image <image> [options]
 
 Options:
   --namespace <ns>                  Kubernetes namespace (default: $NAMESPACE)
   --replicas <n>                    Number of replicas (default: $REPLICAS)
   --port <port>                     Container and Service port (default: $PORT)
-  --image-repo <repo>               Image repository (default: empty)
-  --stable-tag <tag>                Stable image tag
-  --canary-tag <tag>                Canary image tag (optional)
+  --image-repo <repo>               Image repository (default: $IMAGE_REPO)
+  --stable-tag <tag>                Stable image tag (default: $STABLE_TAG)
+  --canary-tag <tag>                Canary image tag (default: $CANARY_TAG)
   --playwright-dir <path>           Playwright tests directory (default: $PLAYWRIGHT_DIR)
   --k6-script <path>                k6 script path (default: $K6_SCRIPT)
   --qps <n>                         Target QPS (default: $QPS)
@@ -94,7 +83,6 @@ Options:
 USAGE
 exit 2; }
 
-# --- Trap for rollback on unexpected failure ---------------------------------
 on_exit() {
   local rc=$?
   stop_port_forward
@@ -112,7 +100,6 @@ stop_port_forward() {
   PORT_FORWARD_PID=""; PORT_FORWARD_LOG=""
 }
 
-# --- Helper functions --------------------------------------------------------
 rollout_json() { kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json 2>/dev/null; }
 
 detect_strategy() {
@@ -124,7 +111,7 @@ detect_strategy() {
 validate_rollout_healthy() {
   local phase
   phase="$(jq -r '.status.phase // "Unknown"' <<<"$(rollout_json)")"
-  [[ "$phase" == "Healthy" ]] || fail "Rollout must be Healthy before canary; current phase: $phase. Run stable deployment first."
+  [[ "$phase" == "Healthy" ]] || fail "Rollout must be Healthy before canary; current phase: $phase. Use --stable first."
 }
 
 resolve_canary_port() {
@@ -170,7 +157,6 @@ rollback() {
   exit "$rc"
 }
 
-# --- Resource rendering ------------------------------------------------------
 mkdir -p "$GEN_DIR"
 
 write_and_apply() {
@@ -453,6 +439,30 @@ EOF
   fi
 }
 
+ensure_hpa() {
+  write_and_apply "hpa.yaml" <<EOF
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: $ROLLOUT_NAME-hpa
+  namespace: $NAMESPACE
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: $ROLLOUT_NAME
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+EOF
+}
+
 patch_steps() {
   kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" \
     --type merge -p "{\"spec\":{\"strategy\":{\"canary\":{\"steps\":$1}}}}"
@@ -465,7 +475,6 @@ patch_replicas() {
 
 set_image() { kubectl argo rollouts set image "$ROLLOUT_NAME" "$CONTAINER=$1" -n "$NAMESPACE"; }
 
-# --- Validation --------------------------------------------------------------
 run_playwright() {
   [[ "$SKIP_PLAYWRIGHT" == false ]] || return 0
   log "Running Playwright tests..."
@@ -516,18 +525,15 @@ start_port_forward() {
   fail "Port-forward failed after 10 attempts"
 }
 
-# --- Main deployment flows ---------------------------------------------------
 deploy_stable() {
-  local tag="${1:-$STABLE_TAG}"
-  [[ -n "$IMAGE_REPO" ]] || fail "IMAGE_REPO is required for stable deploy."
-  [[ -n "$tag" ]] || fail "STABLE_TAG or --stable-tag is required."
-  IMAGE="$IMAGE_REPO:$tag"
+  IMAGE="$IMAGE_REPO:${1:-$STABLE_TAG}"
   log "Deploying stable frontend $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
   ensure_httproute
   ensure_rollout
+  ensure_hpa
   patch_replicas
   patch_steps '[{"setWeight":100}]'
   set_image "$IMAGE"
@@ -537,13 +543,14 @@ deploy_stable() {
 }
 
 deploy_canary() {
-  [[ -n "$IMAGE" ]] || fail "--image is required for canary deploy."
+  IMAGE="${IMAGE:-$IMAGE_REPO:$CANARY_TAG}"
   log "Deploying canary frontend $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
   ensure_httproute
   ensure_rollout
+  ensure_hpa
   detect_strategy
   validate_rollout_healthy
   PREVIOUS_IMAGE="$(jq -r --arg c "$CONTAINER" '.spec.template.spec.containers[]|select(.name==$c)|.image' <<<"$(rollout_json)")"
@@ -579,7 +586,6 @@ deploy_canary() {
   success "Frontend canary completed"
 }
 
-# --- Argument parsing --------------------------------------------------------
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in

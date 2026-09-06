@@ -24,7 +24,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-export TF_VAR_database_username="${TF_VAR_database_username:-admin}"
+export TF_VAR_database_username="${TF_VAR_database_username:-taskuser}"
 export TF_VAR_database_password="${TF_VAR_database_password:-$(openssl rand -base64 32)}"
 export TF_VAR_jwt_secret="${TF_VAR_jwt_secret:-$(openssl rand -base64 64)}"
 export TF_VAR_cloudflare_tunnel_token="${TF_VAR_cloudflare_tunnel_token:-$(tofu -chdir=infra/terraform/edge output -raw cloudflare_tunnel_token 2>/dev/null || true)}"
