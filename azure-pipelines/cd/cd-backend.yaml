@@ -59,7 +59,7 @@ stages:
             env:
               SYSTEM_ACCESSTOKEN: "$(System.AccessToken)"
 
-          - template: azure-pipelines/templates/docker-build-push.yaml
+          - template: /azure-pipelines/templates/docker-build-push.yaml
             parameters:
               dockerfilePath: "services/backend/Dockerfile"
               contextPath: "services/backend"
