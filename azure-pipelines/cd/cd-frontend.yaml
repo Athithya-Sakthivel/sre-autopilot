@@ -2,9 +2,8 @@
 # CD — Frontend
 #
 # Trigger: automatic on successful ci-frontend run on main.
-# Uses pipeline resource ciFrontend.sourceCommit for image tag only.
-# Builds, scans, pushes to ACR, canary deploys via frontend-deploy.sh.
-# No CI artifact handoff; image tag = sourceCommit SHA.
+# Uses pipeline resource ciFrontend.sourceCommit for image tag.
+# Auto-detects first run (stable) vs subsequent runs (canary).
 # No environment approval.
 # ---------------------------------------------------------------------------
 
@@ -124,7 +123,7 @@ stages:
             displayName: "Install pinned k6"
 
           - task: AzureCLI@2
-            displayName: "Canary deploy frontend"
+            displayName: "Deploy frontend (auto stable/canary)"
             inputs:
               azureSubscription: "azdo-oidc-cd"
               scriptType: bash
@@ -141,13 +140,27 @@ stages:
                 export IMAGE_REPO="$(containerRegistry).azurecr.io/frontend"
                 export K6_BIN="k6"
 
-                IMAGE="$(containerRegistry).azurecr.io/frontend:$(resources.pipeline.ciFrontend.sourceCommit)"
+                COMMIT="$(resources.pipeline.ciFrontend.sourceCommit)"
+                IMAGE="$(containerRegistry).azurecr.io/frontend:${COMMIT}"
 
-                bash azure-pipelines/scripts/frontend-deploy.sh \
-                  --canary \
-                  --image "$IMAGE" \
-                  --qps 2 \
-                  --p95-threshold 20000 \
-                  --error-threshold 0.05 \
-                  --duration 15s \
-                  --observation-duration 15s
+                if kubectl get rollout frontend -n "$NAMESPACE" >/dev/null 2>&1; then
+                  echo "Rollout exists: running canary deployment"
+                  bash azure-pipelines/scripts/frontend-deploy.sh \
+                    --canary \
+                    --image "$IMAGE" \
+                    --qps 2 \
+                    --p95-threshold 20000 \
+                    --error-threshold 0.05 \
+                    --duration 15s \
+                    --observation-duration 15s
+                else
+                  echo "Rollout missing: running stable deployment first"
+                  bash azure-pipelines/scripts/frontend-deploy.sh \
+                    --stable \
+                    --stable-tag "$COMMIT" \
+                    --qps 2 \
+                    --p95-threshold 20000 \
+                    --error-threshold 0.05 \
+                    --duration 15s \
+                    --observation-duration 15s
+                fi
