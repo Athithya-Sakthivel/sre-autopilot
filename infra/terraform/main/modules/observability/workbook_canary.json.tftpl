@@ -6,117 +6,84 @@ ${jsonencode({
     {
       type = 1
       name = "title"
-
       content = {
-        json = format(
-          "# Task API Canary Release — %s\n\nStable vs canary · error rate · latency · exceptions",
-          environment
-        )
+        json = format("# Canary Release — %s", environment)
       }
     },
-
     {
       type = 12
       name = "dashboard"
-
       content = {
         version   = "NotebookGroup/1.0"
         groupType = "editable"
-
         items = [
           {
-            type        = 3
-            name        = "traffic_split"
+            type = 3
+            name = "traffic_split"
             customWidth = "50"
-
-            styleSettings = {
-              showBorder = true
-            }
-
+            styleSettings = { showBorder = false, margin = "5px" }
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Traffic split · 5m"
+              title                   = "Traffic split"
               query                   = traffic_split_query
               queryType               = 0
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "areachart"
-              size                    = 0
-              noDataMessage           = "No request telemetry in the last hour."
+              size                    = 1
+              noDataMessage = "No data"
             }
           },
-
           {
-            type        = 3
-            name        = "error_rate"
+            type = 3
+            name = "error_rate"
             customWidth = "50"
-
-            styleSettings = {
-              showBorder = true
-            }
-
+            styleSettings = { showBorder = false, margin = "5px" }
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Error rate by version · 5m"
+              title                   = "Error rate"
               query                   = error_rate_query
               queryType               = 0
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 0
-
-              chartSettings = {
-                ySettings = {
-                  min = 0
-                  max = 100
-                }
-              }
-
-              noDataMessage = "No request telemetry in the last hour."
+              size                    = 1
+              chartSettings = { ySettings = { min = 0, max = 100 } }
+              noDataMessage = "No data"
             }
           },
-
           {
-            type        = 3
-            name        = "latency"
+            type = 3
+            name = "latency"
             customWidth = "50"
-
-            styleSettings = {
-              showBorder = true
-            }
-
+            styleSettings = { showBorder = false, margin = "5px" }
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "P95 latency by version · 5m"
+              title                   = "P95 latency"
               query                   = latency_query
               queryType               = 0
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 0
-              noDataMessage           = "No versioned request latency telemetry in the last hour."
+              size                    = 1
+              noDataMessage = "No data"
             }
           },
-
           {
-            type        = 3
-            name        = "exceptions"
+            type = 3
+            name = "exceptions"
             customWidth = "50"
-
-            styleSettings = {
-              showBorder = true
-            }
-
+            styleSettings = { showBorder = false, margin = "5px" }
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Recent exceptions · 1h"
+              title                   = "Exceptions"
               query                   = exceptions_query
               queryType               = 0
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "table"
               size                    = 0
-              noDataMessage           = "No Application Insights exceptions in the last hour."
+              noDataMessage = "None"
             }
           }
         ]

@@ -337,7 +337,6 @@ spec:
 EOF
   fi
 }
-
 ensure_rollout() {
   if ! kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
     write_and_apply "rollout.yaml" <<EOF
@@ -384,6 +383,16 @@ spec:
                   name: frontend-secrets
                   key: APPLICATIONINSIGHTS_CONNECTION_STRING
                   optional: true
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_SERVICE_NAME
+              value: "task-api-frontend"
+            - name: APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE
+              value: "100"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.version=${IMAGE_TAG},service.instance.id=$(POD_NAME)"
           ports:
             - containerPort: $PORT
               name: http

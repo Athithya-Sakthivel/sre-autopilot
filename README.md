@@ -152,9 +152,8 @@ export TF_VAR_alert_email_address=           # example: athithya651@gmail.com
 export TF_VAR_DOMAIN=                        # example: athithya.site
 export TF_VAR_owner=                         # any username for tags
 
-# Key Vault secrets (non-derivable values)
+# Key Vault secrets (non-derivable secrets)
 export TF_VAR_AZDO_PERSONAL_ACCESS_TOKEN="<azure-devops-pat>"   # Generate at https://dev.azure.com/<organization_name>/_usersSettings/tokens
-export TF_VAR_rollback_webhook_url=          # optional canary rollback Slack alert URL
 
 bash infra/terraform/bootstrap/bootstrap.sh --create
 sleep 5
@@ -253,7 +252,9 @@ kubectl argo rollouts get rollout frontend -n task-api -w
 
 ---
 
-## Observability
+# PHASE 3 validate everything
+
+## PHASE 3.1 Observability
 
 All deployments are monitored through **Azure Monitor Workbooks**, deployed automatically by Terraform. Four dashboards cover the platform's key signals:
 
@@ -273,6 +274,13 @@ All deployments are monitored through **Azure Monitor Workbooks**, deployed auto
 <summary>▶ Expected outputs</summary>
 
 <!-- Insert screenshot: workbook URLs output -->
+
+</details>
+
+### PHASE 3.2 Open the app.<domain> in browser and register as new user and then create a simple task
+
+<details>
+<summary>▶ Expected outputs</summary>
 
 </details>
 

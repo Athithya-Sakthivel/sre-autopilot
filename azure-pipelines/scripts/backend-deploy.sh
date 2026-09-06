@@ -277,6 +277,17 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secrets
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_SERVICE_NAME
+              value: "task-api-backend"
+            - name: APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE
+              value: "100"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.version=${IMAGE_TAG},service.instance.id=$(POD_NAME)"
           resources:
             requests:
               cpu: 100m

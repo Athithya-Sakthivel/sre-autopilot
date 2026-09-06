@@ -1,11 +1,5 @@
 # ============================================================================
 # modules/observability/workbooks.tf
-#
-# All Azure Monitor Workbooks for the Task API platform:
-#   - Application SLO (golden signals)
-#   - Infrastructure (AKS control-plane and node metrics)
-#   - Database (PostgreSQL health and performance)
-#   - Canary Release (rollout monitoring)
 # ============================================================================
 
 resource "azurerm_application_insights_workbook" "app_slo" {
@@ -19,15 +13,14 @@ resource "azurerm_application_insights_workbook" "app_slo" {
   source_id           = local.workbook_workspace_id
 
   data_json = templatefile("${path.module}/workbook_app_slo.json.tftpl", {
-    environment             = var.environment
-    workspace_id            = local.workbook_workspace_id
-    application_insights_id = local.workbook_application_insights_id
-    availability_query      = local.app_slo_availability_query
-    p95_query               = local.app_slo_p95_query
-    traffic_query           = local.app_slo_traffic_query
-    errors_query            = local.app_slo_errors_query
-    business_metrics_query  = local.app_slo_business_metrics_query
-    jvm_heap_query          = local.app_slo_jvm_heap_query
+    environment            = var.environment
+    workspace_id           = local.workbook_workspace_id
+    availability_query     = local.app_slo_availability_query
+    p95_query              = local.app_slo_p95_query
+    traffic_query          = local.app_slo_traffic_query
+    errors_query           = local.app_slo_errors_query
+    business_metrics_query = local.app_slo_business_metrics_query
+    jvm_heap_query         = local.app_slo_jvm_heap_query
   })
 
   tags = var.tags
