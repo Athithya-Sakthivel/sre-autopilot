@@ -5,6 +5,7 @@
 # Applies `run.sh --create` with separate OIDC identity `azdo-oidc-cd`.
 # No plan artifact from CI; apply is re-planned against current remote state.
 # Fetches `azdo-pat` from Key Vault for the Azure DevOps Terraform provider.
+# No environment approval.
 # ---------------------------------------------------------------------------
 
 trigger: none
@@ -25,69 +26,65 @@ stages:
   - stage: apply
     displayName: "Apply Terraform"
     jobs:
-      - deployment: apply_terraform
+      - job: apply_terraform
         displayName: "Apply with OIDC CD identity"
-        environment: "staging"
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-                  clean: true
-                  fetchDepth: 1
-                  fetchTags: false
-                  persistCredentials: false
-                  submodules: false
-                  lfs: false
+        steps:
+          - checkout: self
+            clean: true
+            fetchDepth: 1
+            fetchTags: false
+            persistCredentials: false
+            submodules: false
+            lfs: false
 
-                - task: AzureKeyVault@2
-                  displayName: "Fetch azdo-pat from Key Vault"
-                  inputs:
-                    azureSubscription: "azdo-oidc-cd"
-                    KeyVaultName: "$(KEY_VAULT_NAME)"
-                    SecretsFilter: "azdo-pat"
-                    RunAsPreJob: false
+          - task: AzureKeyVault@2
+            displayName: "Fetch azdo-pat from Key Vault"
+            inputs:
+              azureSubscription: "azdo-oidc-cd"
+              KeyVaultName: "$(KEY_VAULT_NAME)"
+              SecretsFilter: "azdo-pat"
+              RunAsPreJob: false
 
-                - task: AzureCLI@2
-                  displayName: "Apply Terraform"
-                  inputs:
-                    azureSubscription: "azdo-oidc-cd"
-                    addSpnToEnvironment: true
-                    scriptType: bash
-                    scriptLocation: inlineScript
-                    inlineScript: |
-                      set -euo pipefail
+          - task: AzureCLI@2
+            displayName: "Apply Terraform"
+            inputs:
+              azureSubscription: "azdo-oidc-cd"
+              addSpnToEnvironment: true
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
 
-                      : "${servicePrincipalId:?AzureCLI@2 did not expose servicePrincipalId}"
-                      : "${tenantId:?AzureCLI@2 did not expose tenantId}"
-                      : "${AZURESUBSCRIPTION_SERVICE_CONNECTION_ID:?AzureCLI@2 did not expose AZURESUBSCRIPTION_SERVICE_CONNECTION_ID}"
-                      : "${SYSTEM_ACCESSTOKEN:?System.AccessToken is unavailable}"
-                      : "${SYSTEM_OIDCREQUESTURI:?System.OidcRequestUri is unavailable}"
-                      : "${AZDO_ORG_SERVICE_URL:?AZDO_ORG_SERVICE_URL is unavailable}"
-                      : "${AZDO_PERSONAL_ACCESS_TOKEN:?Key Vault secret azdo-pat is unavailable}"
+                : "${servicePrincipalId:?AzureCLI@2 did not expose servicePrincipalId}"
+                : "${tenantId:?AzureCLI@2 did not expose tenantId}"
+                : "${AZURESUBSCRIPTION_SERVICE_CONNECTION_ID:?AzureCLI@2 did not expose AZURESUBSCRIPTION_SERVICE_CONNECTION_ID}"
+                : "${SYSTEM_ACCESSTOKEN:?System.AccessToken is unavailable}"
+                : "${SYSTEM_OIDCREQUESTURI:?System.OidcRequestUri is unavailable}"
+                : "${AZDO_ORG_SERVICE_URL:?AZDO_ORG_SERVICE_URL is unavailable}"
+                : "${AZDO_PERSONAL_ACCESS_TOKEN:?Key Vault secret azdo-pat is unavailable}"
 
-                      export ARM_USE_OIDC=true
-                      export ARM_USE_CLI=false
-                      export ARM_CLIENT_ID="$servicePrincipalId"
-                      export ARM_TENANT_ID="$tenantId"
-                      export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
-                      export ARM_OIDC_REQUEST_TOKEN="$SYSTEM_ACCESSTOKEN"
-                      export ARM_OIDC_REQUEST_URL="$SYSTEM_OIDCREQUESTURI"
-                      export ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID="$AZURESUBSCRIPTION_SERVICE_CONNECTION_ID"
+                export ARM_USE_OIDC=true
+                export ARM_USE_CLI=false
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+                export ARM_OIDC_REQUEST_TOKEN="$SYSTEM_ACCESSTOKEN"
+                export ARM_OIDC_REQUEST_URL="$SYSTEM_OIDCREQUESTURI"
+                export ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID="$AZURESUBSCRIPTION_SERVICE_CONNECTION_ID"
 
-                      export AKS_USE_SERVICE_TAG=false
-                      export SKIP_IP_FETCH=true
-                      export TF_BACKEND_AUTH_MODE=oidc
-                      export TOFU_VERSION="$TOFU_VERSION"
-                      export TF_IN_AUTOMATION=true
-                      export TF_INPUT=false
+                export AKS_USE_SERVICE_TAG=false
+                export SKIP_IP_FETCH=true
+                export TF_BACKEND_AUTH_MODE=oidc
+                export TOFU_VERSION="$TOFU_VERSION"
+                export TF_IN_AUTOMATION=true
+                export TF_INPUT=false
 
-                      cd "$TF_WORKING_DIR"
-                      bash ./run.sh --create --env "$TF_ENV"
-                  env:
-                    SYSTEM_ACCESSTOKEN: "$(System.AccessToken)"
-                    SYSTEM_OIDCREQUESTURI: "$(System.OidcRequestUri)"
-                    AZDO_ORG_SERVICE_URL: "$(AZDO_ORG_SERVICE_URL)"
-                    AZDO_PERSONAL_ACCESS_TOKEN: "$(azdo-pat)"
-                    TF_VAR_owner: "$(TF_VAR_owner)"
-                    TF_VAR_alert_email_address: "$(TF_VAR_alert_email_address)"
+                cd "$TF_WORKING_DIR"
+                bash ./run.sh --create --env "$TF_ENV"
+            env:
+              SYSTEM_ACCESSTOKEN: "$(System.AccessToken)"
+              SYSTEM_OIDCREQUESTURI: "$(System.OidcRequestUri)"
+              AZDO_ORG_SERVICE_URL: "$(AZDO_ORG_SERVICE_URL)"
+              AZDO_PERSONAL_ACCESS_TOKEN: "$(azdo-pat)"
+              TF_VAR_owner: "$(TF_VAR_owner)"
+              TF_VAR_alert_email_address: "$(TF_VAR_alert_email_address)"

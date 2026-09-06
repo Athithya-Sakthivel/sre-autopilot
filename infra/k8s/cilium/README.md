@@ -1,6 +1,6 @@
 # Cilium NetworkPolicy Chart
 
-This Helm chart manages Cilium Network Policies for the Task API platform. It does **not** install Cilium or manage Gateway/HTTPRoute resources. Gateway API is provided by Envoy Gateway.
+This Helm chart manages Cilium Network Policies for the Task API platform. It does **not** install Cilium or manage Gateway/HTTPRoute resources. Gateway API is provided by Envoy Gateway for kind cluster and aks parity.
 
 ## Directory Structure
 

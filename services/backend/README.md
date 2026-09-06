@@ -196,9 +196,3 @@ az monitor log-analytics query --workspace "$CUSTOM_ID" \
 - **Workspace not linked?** Recreate Application Insights with `--workspace` explicitly.
 
 ---
-
-## Security Notes
-
-- Never commit secrets; use Azure Key Vault.
-- The JWT secret and DB password are stored in Key Vault.
-- The connection string is retrieved at runtime and passed via environment variable.

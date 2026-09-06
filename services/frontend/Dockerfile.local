@@ -2,7 +2,7 @@ FROM node:24.20-alpine3.24 AS builder
 
 WORKDIR /app
 
-# Require the lockfile for reproducible dependency installation.
+# Require the lockfile for reproducible dependency installation
 COPY package.json package-lock.json ./
 RUN npm ci
 
