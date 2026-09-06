@@ -360,25 +360,40 @@ patch_replicas() {
   kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" \
     --type merge -p "{\"spec\":{\"replicas\":$REPLICAS}}"
 }
-
 set_image_and_version() {
   local image="$1"
   local rollout_data env_index patch
 
   rollout_data="$(kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json)"
+
+  # Find existing index of OTEL_RESOURCE_ATTRIBUTES, if any.
   env_index="$(jq -r '(.spec.template.spec.containers[0].env // []) | to_entries[] | select(.value.name == "OTEL_RESOURCE_ATTRIBUTES") | .key' <<<"$rollout_data")"
 
-  if [[ -z "$env_index" ]]; then
-    fail "OTEL_RESOURCE_ATTRIBUTES env not found in rollout; cannot set version"
-  fi
-
+  # Build patch: always replace image.
   patch='[
-    {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
-    {"op":"replace","path":"/spec/template/spec/containers/0/env/'"$env_index"'/value","value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"}
+    {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"}
   ]'
+
+  if [[ -z "$env_index" ]]; then
+    # Env var not present: add it to the end of the env array.
+    patch='[
+      {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
+      {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{
+        "name":"OTEL_RESOURCE_ATTRIBUTES",
+        "value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"
+      }}
+    ]'
+  else
+    # Env var present: replace its value.
+    patch='[
+      {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
+      {"op":"replace","path":"/spec/template/spec/containers/0/env/'"$env_index"'/value","value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"}
+    ]'
+  fi
 
   kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" --type json -p "$patch"
 }
+
 
 run_k6() {
   [[ "$SKIP_K6" == false ]] || return 0
