@@ -6,6 +6,10 @@ import App from "./App";
 import "./styles.css";
 import "./types";
 
+// Fallback to a safe value if build-time env is missing.
+const APP_VERSION =
+  (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim() || "unknown";
+
 function createApplicationInsights(): ApplicationInsights | undefined {
   const connectionString = window.APPINSIGHTS_CONNECTION_STRING?.trim();
 
@@ -28,12 +32,16 @@ function createApplicationInsights(): ApplicationInsights | undefined {
       connectionString,
       enableAutoRouteTracking: true,
       enableCorsCorrelation: true,
-
-      // Do not collect HTTP headers by default. In particular, keep
-      // authentication-related headers out of telemetry.
       enableRequestHeaderTracking: false,
       enableResponseHeaderTracking: false,
     },
+  });
+
+  // Attach AppVersion for canary and deployment correlation.
+  appInsights.addTelemetryInitializer((envelope) => {
+    envelope.tags = envelope.tags ?? {};
+    envelope.tags["ai.application.ver"] = APP_VERSION;
+    envelope.tags["ai.cloud.role"] = "task-api-frontend";
   });
 
   appInsights.loadAppInsights();

@@ -7,67 +7,111 @@ ${jsonencode({
       type = 1
       name = "title"
       content = {
-        json = format("# Task API DB — %s", environment)
+        json = format("# Task API Database — %s", environment)
       }
     },
     {
       type = 12
       name = "dashboard"
+
       content = {
         version   = "NotebookGroup/1.0"
         groupType = "editable"
+
         items = [
           {
-            type = 3
-            name = "connections"
+            type        = 3
+            name        = "connections"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Connections"
+              title                   = "Active connections · 10m average"
               query                   = connections_query
-              queryType               = 0
+
+              # 3 = Average.
+              size        = 0
+              aggregation = 3
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 1
-              noDataMessage = "No data"
+
+              chartSettings = {
+                showLegend  = false
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                }
+              }
+
+              noDataMessage = "No active-connection metric data"
             }
           },
           {
-            type = 3
-            name = "cpu"
+            type        = 3
+            name        = "cpu"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "CPU %"
+              title                   = "CPU · 10m average"
               query                   = cpu_query
-              queryType               = 0
+
+              # 3 = Average.
+              size        = 0
+              aggregation = 3
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 1
-              chartSettings = { ySettings = { min = 0, max = 100 } }
-              noDataMessage = "No data"
+
+              chartSettings = {
+                showLegend  = false
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                  max = 100
+                }
+              }
+
+              noDataMessage = "No CPU metric data"
             }
           },
           {
-            type = 3
-            name = "storage"
+            type        = 3
+            name        = "storage"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Storage %"
+              title                   = "Storage · 10m average"
               query                   = storage_query
-              queryType               = 0
+
+              # 3 = Average.
+              size        = 0
+              aggregation = 3
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 1
-              chartSettings = { ySettings = { min = 0, max = 100 } }
-              noDataMessage = "No data"
+
+              chartSettings = {
+                showLegend  = false
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                  max = 100
+                }
+              }
+
+              noDataMessage = "No storage metric data"
             }
           }
         ]

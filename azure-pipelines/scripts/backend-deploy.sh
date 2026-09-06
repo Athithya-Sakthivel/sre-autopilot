@@ -17,10 +17,14 @@ NAMESPACE="${NAMESPACE:-task-api}"
 REPLICAS="${REPLICAS:-2}"
 PORT="${PORT:-8080}"
 IMAGE_REPO="${IMAGE_REPO:-ghcr.io/athithya-sakthivel/task-api-backend}"
+
 STABLE_TAG="${STABLE_TAG:-v1}"
 CANARY_TAG="${CANARY_TAG:-v2}"
+IMAGE_TAG="${STABLE_TAG}"
+
 K6_SCRIPT="${K6_SCRIPT:-$SCRIPT_DIR/../tests/k6/backend-load.ts}"
 K6_BIN="${K6_BIN:-k6}"
+
 
 QPS="${QPS:-50}"
 P95_THRESHOLD="${P95_THRESHOLD:-200}"
@@ -47,6 +51,7 @@ ROLL_OUT_UPDATED=false
 ROLLING_BACK=false
 PORT_FORWARD_PID=""
 PORT_FORWARD_LOG=""
+
 
 C_RESET='\033[0m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'; C_YELLOW='\033[1;33m'; C_CYAN='\033[0;36m'
 log()    { printf "${C_CYAN}[%s]${C_RESET} %s\n" "$(date -u +%H:%M:%SZ)" "$*"; }
@@ -361,6 +366,11 @@ patch_replicas() {
 
 set_image() { kubectl argo rollouts set image "$ROLLOUT_NAME" "$CONTAINER=$1" -n "$NAMESPACE"; }
 
+update_otel_version() {
+  kubectl set env "rollout/$ROLLOUT_NAME" -n "$NAMESPACE" \
+    "OTEL_RESOURCE_ATTRIBUTES=service.version=${IMAGE_TAG},service.instance.id=\$(POD_NAME)"
+}
+
 run_k6() {
   [[ "$SKIP_K6" == false ]] || return 0
   log "Running k6 load test (QPS=$QPS, duration=$DURATION)..."
@@ -400,7 +410,8 @@ start_port_forward() {
 
 deploy_stable() {
   IMAGE="$IMAGE_REPO:${1:-$STABLE_TAG}"
-  log "Deploying stable backend $IMAGE"
+  IMAGE_TAG="${IMAGE##*:}"          # extract tag from full image
+  log "Deploying stable $ROLLOUT_NAME $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
@@ -410,14 +421,16 @@ deploy_stable() {
   patch_replicas
   patch_steps '[{"setWeight":100}]'
   set_image "$IMAGE"
+  update_otel_version               # <-- add this
   promote_to_full 2>/dev/null || true
   wait_for_healthy
-  success "Stable backend deployed"
+  success "Stable $ROLLOUT_NAME deployed"
 }
 
 deploy_canary() {
   IMAGE="${IMAGE:-$IMAGE_REPO:$CANARY_TAG}"
-  log "Deploying canary backend $IMAGE"
+  IMAGE_TAG="${IMAGE##*:}"
+  log "Deploying canary $ROLLOUT_NAME $IMAGE"
   ensure_namespace
   ensure_configmap
   ensure_services
@@ -437,11 +450,12 @@ deploy_canary() {
     {"setWeight":100}
   ]'
   set_image "$IMAGE"
+  update_otel_version               # <-- add this
   ROLL_OUT_UPDATED=true
   wait_for_canary_pause
   resolve_canary_port
   start_port_forward
-  run_k6
+  run_k6                            # or run_playwright + run_k6 for frontend
   stop_port_forward
   success "Validations passed"
   if [[ "$SKIP_PROMOTE" == true ]]; then
@@ -455,7 +469,7 @@ deploy_canary() {
   promote_once
   wait_for_healthy
   ROLL_OUT_UPDATED=false
-  success "Backend canary completed"
+  success "$ROLLOUT_NAME canary completed"
 }
 
 parse_args() {

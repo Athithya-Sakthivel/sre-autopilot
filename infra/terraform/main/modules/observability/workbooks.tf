@@ -23,6 +23,18 @@ resource "azurerm_application_insights_workbook" "app_slo" {
     jvm_heap_query         = local.app_slo_jvm_heap_query
   })
 
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.workbook_workspace_id) != ""
+      error_message = "Application SLO workbook requires a valid Log Analytics workspace ID."
+    }
+
+    precondition {
+      condition     = trimspace(local.workbook_application_insights_id) != ""
+      error_message = "Application SLO workbook requires a valid Application Insights resource ID."
+    }
+  }
+
   tags = var.tags
 }
 
@@ -45,6 +57,18 @@ resource "azurerm_application_insights_workbook" "infra" {
     node_disk_query    = local.infra_node_disk_query
     pod_restarts_query = local.infra_pod_restarts_query
   })
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.workbook_workspace_id) != ""
+      error_message = "Infrastructure workbook requires a valid Log Analytics workspace ID."
+    }
+
+    precondition {
+      condition     = trimspace(local.aks_cluster_id_normalized) != ""
+      error_message = "Infrastructure workbook requires aks_cluster_id to be set."
+    }
+  }
 
   tags = var.tags
 }
@@ -69,8 +93,13 @@ resource "azurerm_application_insights_workbook" "database" {
 
   lifecycle {
     precondition {
-      condition     = var.postgresql_server_id != null
+      condition     = var.postgresql_server_id != null && trimspace(var.postgresql_server_id) != ""
       error_message = "enable_database_workbook=true requires postgresql_server_id to be set."
+    }
+
+    precondition {
+      condition     = trimspace(local.workbook_workspace_id) != ""
+      error_message = "Database workbook requires a valid Log Analytics workspace ID."
     }
   }
 
@@ -95,6 +124,18 @@ resource "azurerm_application_insights_workbook" "canary" {
     latency_query       = local.canary_latency_query
     exceptions_query    = local.canary_exceptions_query
   })
+
+  lifecycle {
+    precondition {
+      condition     = trimspace(local.workbook_workspace_id) != ""
+      error_message = "Canary workbook requires a valid Log Analytics workspace ID."
+    }
+
+    precondition {
+      condition     = trimspace(local.workbook_application_insights_id) != ""
+      error_message = "Canary workbook requires a valid Application Insights resource ID."
+    }
+  }
 
   tags = var.tags
 }

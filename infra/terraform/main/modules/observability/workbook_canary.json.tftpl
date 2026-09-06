@@ -7,83 +7,142 @@ ${jsonencode({
       type = 1
       name = "title"
       content = {
-        json = format("# Canary Release — %s", environment)
+        json = format("# Task API Canary Release — %s", environment)
       }
     },
     {
       type = 12
       name = "dashboard"
+
       content = {
         version   = "NotebookGroup/1.0"
         groupType = "editable"
+
         items = [
           {
-            type = 3
-            name = "traffic_split"
+            type        = 3
+            name        = "traffic_split"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Traffic split"
+              title                   = "Traffic split · 5m"
               query                   = traffic_split_query
-              queryType               = 0
+
+              # RequestCount is a counter and should be summed.
+              size        = 0
+              aggregation = 1
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
-              visualization           = "areachart"
-              size                    = 1
-              noDataMessage = "No data"
+              visualization           = "timechart"
+
+              chartSettings = {
+                group      = "Version"
+                showLegend = true
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                }
+              }
+
+              noDataMessage = "No request data"
             }
           },
           {
-            type = 3
-            name = "error_rate"
+            type        = 3
+            name        = "error_rate"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Error rate"
+              title                   = "Error rate by version · 5m"
               query                   = error_rate_query
-              queryType               = 0
+
+              # 3 = Average.
+              size        = 0
+              aggregation = 3
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 1
-              chartSettings = { ySettings = { min = 0, max = 100 } }
-              noDataMessage = "No data"
+
+              chartSettings = {
+                group       = "Version"
+                showLegend  = true
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                  max = 100
+                }
+              }
+
+              noDataMessage = "No request/error data"
             }
           },
           {
-            type = 3
-            name = "latency"
+            type        = 3
+            name        = "latency"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "P95 latency"
+              title                   = "P95 latency by version · 5m"
               query                   = latency_query
-              queryType               = 0
+
+              # 4 = Max.
+              #
+              # Each Version/5m bucket is already a P95. When the workbook
+              # renderer needs to merge values, taking Max preserves the
+              # worst P95 rather than summing percentile values.
+              size        = 0
+              aggregation = 4
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "timechart"
-              size                    = 1
-              noDataMessage = "No data"
+
+              chartSettings = {
+                group       = "Version"
+                showLegend  = true
+                showMetrics = false
+
+                ySettings = {
+                  min = 0
+                }
+              }
+
+              noDataMessage = "No latency data"
             }
           },
           {
-            type = 3
-            name = "exceptions"
+            type        = 3
+            name        = "exceptions"
             customWidth = "50"
-            styleSettings = { showBorder = false, margin = "5px" }
+
             content = {
               version                 = "KqlItem/1.0"
-              title                   = "Exceptions"
+              title                   = "Recent exceptions · 1h"
               query                   = exceptions_query
-              queryType               = 0
+
+              size        = 0
+              aggregation = 0
+              queryType   = 0
+
               resourceType            = "microsoft.operationalinsights/workspaces"
               crossComponentResources = [workspace_id]
               visualization           = "table"
-              size                    = 0
-              noDataMessage = "None"
+
+              gridSettings = {
+                rowLimit = 10
+              }
+
+              noDataMessage = "No Application Insights exceptions in the last hour"
             }
           }
         ]
