@@ -360,38 +360,34 @@ patch_replicas() {
   kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" \
     --type merge -p "{\"spec\":{\"replicas\":$REPLICAS}}"
 }
+
 set_image_and_version() {
   local image="$1"
-  local rollout_data env_index patch
+  local rollout_data new_container patch_json
 
   rollout_data="$(kubectl get rollout "$ROLLOUT_NAME" -n "$NAMESPACE" -o json)"
 
-  # Find existing index of OTEL_RESOURCE_ATTRIBUTES, if any.
-  env_index="$(jq -r '(.spec.template.spec.containers[0].env // []) | to_entries[] | select(.value.name == "OTEL_RESOURCE_ATTRIBUTES") | .key' <<<"$rollout_data")"
+  # Read the first container and produce a new object with updated image and
+  # OTEL_RESOURCE_ATTRIBUTES env var, preserving all other env vars and fields.
+  new_container="$(jq -c \
+    --arg image "$image" \
+    --arg tag "$IMAGE_TAG" \
+    '.spec.template.spec.containers[0]
+     | .image = $image
+     | .env = (
+         (.env // [])
+         | map(select(.name != "OTEL_RESOURCE_ATTRIBUTES"))
+         + [{
+             name: "OTEL_RESOURCE_ATTRIBUTES",
+             value: ("service.version=" + $tag + ",service.instance.id=$(POD_NAME)")
+           }]
+       )' <<<"$rollout_data")"
 
-  # Build patch: always replace image.
-  patch='[
-    {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"}
-  ]'
+  patch_json="$(jq -cn --argjson container "$new_container" '[
+    {"op":"replace","path":"/spec/template/spec/containers/0","value":$container}
+  ]')"
 
-  if [[ -z "$env_index" ]]; then
-    # Env var not present: add it to the end of the env array.
-    patch='[
-      {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
-      {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{
-        "name":"OTEL_RESOURCE_ATTRIBUTES",
-        "value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"
-      }}
-    ]'
-  else
-    # Env var present: replace its value.
-    patch='[
-      {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"'"$image"'"},
-      {"op":"replace","path":"/spec/template/spec/containers/0/env/'"$env_index"'/value","value":"service.version='"$IMAGE_TAG"',service.instance.id=$(POD_NAME)"}
-    ]'
-  fi
-
-  kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" --type json -p "$patch"
+  kubectl patch rollout "$ROLLOUT_NAME" -n "$NAMESPACE" --type json -p "$patch_json"
 }
 
 
