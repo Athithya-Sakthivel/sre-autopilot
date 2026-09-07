@@ -1,5 +1,3 @@
-#
-
 # Step-by-Step Deployment Guide
 
 ## Prerequisites
